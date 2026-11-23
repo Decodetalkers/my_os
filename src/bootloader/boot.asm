@@ -49,28 +49,128 @@ puts:
 	jmp .loop
 
 .done:
-	pop ax
-	pop si
-	ret
+  pop bx
+  pop ax
+  pop si
+  ret
 
 main:
-	mov ax, 0
-	mov ds, ax
-	mov es, ax
+    ; setup data segments
+    mov ax, 0                   ; can't set ds/es directly
+    mov ds, ax
+    mov es, ax
+    
+    ; setup stack
+    mov ss, ax
+    mov sp, 0x7C00              ; stack grows downwards from where we are loaded in memory
 
-	mov ss, ax
-	mov sp, 0x7c00
+    ; read something from floppy disk
+    ; BIOS should set DL to drive number
+    mov [ebr_drive_number], dl
 
-	; print message
-	mov si, msg_hello
+    mov ax, 1                   ; LBA=1, second sector from disk
+    mov cl, 1                   ; 1 sector to read
+    mov bx, 0x7E00              ; data should be after the bootloader
+    call disk_read
+
+    ; print hello world message
+    mov si, msg_hello
+    call puts
+
+    cli                         ; disable interrupts, this way CPU can't get out of "halt" state
+    hlt
+
+
+floppy_error:
+	mov si, msg_read_failed
 	call puts
+	jmp wait_key_and_reboot
 
-	hlt
+wait_key_and_reboot:
+	mov ah, 0
+	int 16h
+	jmp 0FFFh:0
 
 .halt:
-	jmp .halt
+	cli
+	hit
+
+lba_to_chs:
+  push ax
+	push dx
+
+
+	xor dx, dx                       ; dx = 0
+	div word [bdb_sectors_per_track] ; ax = LBA
+	inc dx
+	mov cs, dx
+
+	xor dx, dx
+
+	div word [bdb_heads]
+
+	mov dh, dl
+	mov ch, al
+	shl ah, 6
+	or cl, ah
+
+
+	pop ax
+	mov dl, al
+	pop ax
+	ret
+
+
+disk_read:
+	push ax
+	push bx
+	push cx
+	push dx
+	push di
+
+	push cx
+	call lba_to_chs
+	pop ax
+
+	mov ah, 02h
+	mov di, 3            ; retry count
+
+.retry:
+	pusha
+	stc
+	int 13h
+	jnc .done
+
+	popa
+	call disk_reset
+	
+	test di, di
+	jnz .retry
+
+.fail:
+	jmp floppy_error
+
+.done:
+	popa
+
+	pop di
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+
+	ret
+
+disk_reset:
+	pusha
+	mov ah, 0
+	stc
+	int 13h
+	jc floppy_error
+	popa
+	ret
 
 msg_hello: db 'Hello world!', ENDL, 0
-
+msg_read_failed:        db 'Read from disk failed!', ENDL, 0
 times 510-($-$$) db 0
 dw 0AA55h
