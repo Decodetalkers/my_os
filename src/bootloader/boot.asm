@@ -37,13 +37,14 @@ start:
 puts:
 	push si
 	push ax
+	push bx
 
 .loop:
 	lodsb            ; loads next character in al
 	or al, al        ; verify if next character is null?
 	jz .done         ; else jump to .done
 
-	mov ah, 0x0e     ; call bios interrupt
+	mov ah, 0x0E     ; call bios interrupt
 	int 0x10
 
 	jmp .loop
@@ -102,8 +103,9 @@ lba_to_chs:
 
 	xor dx, dx                       ; dx = 0
 	div word [bdb_sectors_per_track] ; ax = LBA
+
 	inc dx
-	mov cs, dx
+	mov cx, dx
 
 	xor dx, dx
 
